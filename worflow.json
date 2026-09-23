@@ -1,0 +1,143 @@
+{
+  "name": "HW#10 — Compare Calendar CSV and JSON",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://xmlcalendar.ru/data/ru/2022/calendar.csv",
+        "options": {},
+        "response": {
+          "response": {
+            "responseFormat": "text"
+          }
+        }
+      },
+      "id": "get-csv",
+      "name": "Get CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -520,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://xmlcalendar.ru/data/ru/2022/calendar.json",
+        "options": {},
+        "response": {
+          "response": {
+            "responseFormat": "json"
+          }
+        }
+      },
+      "id": "get-json",
+      "name": "Get JSON",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -520,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "position",
+        "options": {}
+      },
+      "id": "merge-sources",
+      "name": "Merge Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// CSV contains the common calendar data in one row.\n// JSON contains the same common data plus transitions.\n// We compare only fields represented in BOTH formats.\n\nconst item = $input.first().json;\nconst csvText = String(item.data ?? item.body ?? item.response ?? '');\n\nfunction parseCsvLine(line) {\n  const result = [];\n  let value = '';\n  let quoted = false;\n\n  for (let i = 0; i < line.length; i++) {\n    const ch = line[i];\n\n    if (ch === '\"') {\n      if (quoted && line[i + 1] === '\"') {\n        value += '\"';\n        i++;\n      } else {\n        quoted = !quoted;\n      }\n    } else if (ch === ',' && !quoted) {\n      result.push(value);\n      value = '';\n    } else {\n      value += ch;\n    }\n  }\n\n  result.push(value);\n  return result;\n}\n\n// Remove UTF-8 BOM and empty lines.\nconst lines = csvText\n  .replace(/^\\uFEFF/, '')\n  .split(/\\r?\\n/)\n  .map(line => line.trim())\n  .filter(Boolean);\n\nif (lines.length < 2) {\n  throw new Error('CSV does not contain a header and a data row.');\n}\n\nconst headers = parseCsvLine(lines[0]);\nconst values = parseCsvLine(lines[1]);\n\nconst csv = {};\nheaders.forEach((header, index) => {\n  csv[header] = values[index] ?? '';\n});\n\nconst monthNames = [\n  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',\n  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'\n];\n\nconst jsonYear = Number(item.year);\nconst csvYear = Number(csv['Год/Месяц']);\n\nconst differences = [];\n\nif (csvYear !== jsonYear) {\n  differences.push({\n    field: 'year',\n    csv: csvYear,\n    json: jsonYear\n  });\n}\n\nconst jsonMonths = Array.isArray(item.months) ? item.months : [];\n\nmonthNames.forEach((monthName, index) => {\n  const csvDays = String(csv[monthName] ?? '').trim();\n  const jsonMonth = jsonMonths.find(m => Number(m.month) === index + 1);\n  const jsonDays = String(jsonMonth?.days ?? '').trim();\n\n  if (csvDays !== jsonDays) {\n    differences.push({\n      field: `months.${index + 1}.days`,\n      month: monthName,\n      csv: csvDays,\n      json: jsonDays\n    });\n  }\n}\n\nconst statisticChecks = [\n  ['Всего рабочих дней', 'workdays'],\n  ['Всего праздничных и выходных дней', 'holidays'],\n  ['Количество рабочих часов при 40-часовой рабочей неделе', 'hours40'],\n  ['Количество рабочих часов при 36-часовой рабочей неделе', 'hours36'],\n  ['Количество рабочих часов при 24-часовой рабочей неделе', 'hours24'],\n];\n\nfor (const [csvField, jsonField] of statisticChecks) {\n  const csvValue = Number(String(csv[csvField] ?? '').replace(',', '.'));\n  const jsonValue = Number(item.statistic?.[jsonField]);\n\n  if (csvValue !== jsonValue) {\n    differences.push({\n      field: `statistic.${jsonField}`,\n      csv: csvValue,\n      json: jsonValue\n    });\n  }\n}\n\nconst identical = differences.length === 0;\n\nreturn [{\n  json: {\n    identical,\n    message: identical\n      ? 'CSV и JSON содержат идентичные общие данные календаря.'\n      : 'CSV и JSON содержат различия.',\n    compared: {\n      year: true,\n      months: 12,\n      statistic: true\n    },\n    differences\n  }\n}];\n"
+      },
+      "id": "compare-data",
+      "name": "Compare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get CSV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CSV": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get JSON": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Sources": {
+      "main": [
+        [
+          {
+            "node": "Compare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "homework10-calendar-compare",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
