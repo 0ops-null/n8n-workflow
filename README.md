@@ -28,7 +28,7 @@ Workflow получает календарь России за 2022 год из 
 ## Импорт в n8n
 
 ```text
-[https://raw.githubusercontent.com/0ops-null/n8n-workflow/main/workflow.json](https://github.com/0ops-null/n8n-workflow/raw/refs/heads/main/worflow.json)
+https://github.com/0ops-null/n8n-workflow/raw/refs/heads/main/worflow.json
 ```
 
 В n8n выберите импорт workflow из URL и вставьте Raw URL.
